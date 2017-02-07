@@ -1,0 +1,346 @@
+<html>
+    <head>
+        <title>TODO supply a title</title>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <script src="js/jquery-1.7.1.min.js"></script>
+
+        <script src='https://cdn.pydata.org/bokeh/release/bokeh-0.12.2.min.js'></script>
+        <link href='https://cdn.pydata.org/bokeh/release/bokeh-0.12.2.min.css' rel='stylesheet'>
+
+        <style>
+
+            .linha{
+                margin-bottom: 5px;
+            }
+
+            .linha-input{
+                color:  #006be9;
+            }
+
+            .linha-hiden{
+                display: none;
+            }
+
+            #alert{
+                float: right;
+                width: 300px;
+                background-color: azure;
+                font-size: 10px;
+            }
+
+            #terminal{
+                width: 800px; 
+                background-color: #f8f8f8;
+                border-color: grey;
+                border-style: solid;
+                border-width: 2px;
+                font-size: 14px;
+            }
+
+            #prompt{
+                float: left;
+                margin-top: 1px;
+                color: #006be9;
+                font-size: 16px;
+            }
+
+
+            #type {
+                font-size: 16px;
+                background-color: #f8f8f8;
+                outline: none;
+                color: #006be9;
+                border: none;
+                border-color: transparent;
+                padding: 0;
+                margin: 0;
+            }
+
+        </style>
+
+
+
+    </head>
+    <body>
+        <h1>Live R Service</h1>
+
+        <input type="text" id="token"/>
+
+        <table id="terminal">
+            <tbody>
+                <tr>
+                    <td>Insira os comandos abaixo...</td>
+                </tr>
+                <tr>
+                    <td id="linha-temporaria" class="linha"></td>
+                </tr>
+                <tr>
+                    <td id="insert-text" class="linha">
+                        <div id="prompt"></div>
+                        <input type="text" id="type"/>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+
+
+
+
+        <button onclick="initrLive()">iniciar rLive</button><br/> 
+        <textarea rows="4" cols="50" id="script"></textarea><br/> 
+        <button  onclick="send()" >send script</button>
+        <div id="saida"></div><br/> 
+
+
+
+
+
+        <div id="alert"></div>
+
+        <div id="file"></div>
+
+
+
+        <script language="javascript" type="text/javascript">
+
+            var tableRef = document.getElementById('terminal').getElementsByTagName('tbody')[0];
+            var inserttext = document.getElementById('insert-text');
+            var alert = document.getElementById("alert");
+            var type = document.getElementById("type");
+            var prompt = document.getElementById("prompt");
+            var linhaTemporaria = document.getElementById("linha-temporaria");
+            var comandos = [];
+            var socket;
+
+
+            $("#type").keydown(function (e) {
+                var code = e.keyCode || e.which;
+                if (code === 13 && websocket) {//enter
+                    websocket.send(type.value + "\n");
+                    log("enviado: " + type.value);
+                    comandos[comandos.length] = type.value;
+                }
+
+                if (code === 38 && comandos.length > 0) {
+                    var index = $.inArray(type.value, comandos);
+                    if (index > -1) {
+                        type.value = comandos[index > 0 ? index - 1 : 0];
+                    } else {
+                        type.value = comandos[comandos.length - 1];
+                    }
+                }
+
+                if (code === 40 && comandos.length > 0) {
+                    var index = $.inArray(type.value, comandos);
+                    if (index > -1 && ++index < comandos.length) {
+                        type.value = comandos[index];
+                    }
+                }
+            });
+
+
+            var lineCount = 0;
+
+
+            function insertLine(text, classe) {
+                var newCell = tableRef.insertRow(tableRef.rows.length - 2).insertCell(0);
+                newCell.className = classe;
+                newCell.appendChild(document.createTextNode(text));
+                newCell.id = 'line-' + lineCount++;
+                if (lineCount > 20) {
+                    document.getElementById("line-" + (lineCount - 20)).className += " linha-hiden";
+                }
+            }
+
+
+
+            var handlers = [], msgs = [];
+
+
+            handlers["echo"] = function (msg) {
+                type.value = "";
+                insertLine(msg.data, "linha linha-input");
+                type.focus();
+            };
+            handlers["comando"] = function (msg) {
+                msg = msg.data;
+                if (msg.indexOf("\n") >= 0) {
+                    insertLine(linhaTemporaria.innerText + msg, "linha");
+                    linhaTemporaria.innerText = "";
+                    log("\"" + msg + "\" tratado cm nova linha");
+                } else {
+                    linhaTemporaria.innerText += msg;
+                    type.focus();
+                    log(msg + " tratado cm simples");
+                }
+                type.focus();
+            };
+            handlers["prompt"] = function (msg) {
+                prompt.innerText = msg.data;
+                type.focus();
+            };
+            handlers["alerta"] = function (msg) {
+                log("alerta recebido: " + msg.data);
+            };
+            handlers["file"] = function (msg) {
+                log("arquivo recebido: " + msg.data);
+            };
+
+
+            msgs["echo"] = function (msg) {
+                log("[echo]" + ": " + msg.data);
+            };
+            msgs["comando"] = function (msg) {
+                log("[comando]" + ": " + msg.data);
+            };
+            msgs["prompt"] = function (msg) {
+                log("[prompt]" + ": " + msg.data);
+            };
+            msgs["alerta"] = function (msg) {
+                log("[alerta]" + ": " + msg.data);
+            };
+            msgs["file"] = function (msg) {
+                log("[file]" + ": " + msg.data);
+            };
+
+            var int = 675;
+
+            function getToken() {
+                return document.getElementById("token").value + int;
+            }
+
+            function initServers(servers) {
+                var url = "ws://localhost:8090/prototiposervice/rlive/" + (getToken()) + "/";
+                for (var server in servers) {
+                    server = servers[server];
+                    log("tentando abrir conexão em " + url + server);
+
+                    var webs = new WebSocket(url + server);
+
+                    webs.onopen = msgs[server]("open");
+                    webs.onerror = msgs[server]("close");
+                    webs.onmessage = handlers[server];
+
+                    if (server === "comando")
+                        websocket = webs;
+
+                }
+            }
+
+
+            function initrLive() {
+                log('iniciando webservice rlive...');
+                $.ajax({
+                    type: "get",
+                    url: "http://localhost:8090/prototiposervice/webresources/generic",
+                    data: {
+                        token: getToken()
+                    },
+                    dataType: "json",
+                    success: function (data) {
+                        log("json received: " + JSON.stringify(data));
+                        initServers(data.servers);
+                        int++;
+                    },
+                    error: function (event, jqxhr, settings, thrownError) {
+                        log("error " + (jqxhr));
+                    }
+                });
+            }
+
+
+
+            function log(text) {
+                alert.innerHTML += text + "<br/>";
+            }
+
+
+
+
+
+            function send() {
+                var script = {
+                    token: getToken(),
+                    script: btoa($("#script").val())
+                };
+
+                log('sending.. ' + JSON.stringify(script));
+
+                $.ajax({
+                    url: "http://localhost:8090/prototiposervice/webresources/generic",
+                    type: 'post',
+                    contentType: "text/plain",
+                    data: (JSON.stringify(script)),
+                    dataType: "text",
+                    success: function (data) {
+                        var res = JSON.parse(b64DecodeUnicode(data));
+                        document.getElementById("saida").innerHTML = toHTML(b64DecodeUnicode(res.resultado));
+                        log("received files: " + res.files);
+                        showFile(res.files);
+                    }
+                });
+            }
+
+            function showFile(files) {
+                files = files.split("/");
+                for (var file in files) {
+                    file = files[file];
+                    if (file.indexOf("rbokeh") > 0) {
+                        $.ajax({
+                            type: "get",
+                            url: "http://localhost:8090/prototiposervice/webresources/generic",
+                            data: {
+                                file: file
+                            },
+                            dataType: "json",
+                            success: function (data) {
+                                log("file received: " + (data.file));
+                                
+                                $("#file").load(data.file);
+                                
+                             //   addFile(decode_utf8(data.file));
+                            },
+                            error: function (event, jqxhr, settings, thrownError) {
+                                log("error " + (jqxhr));
+                            }
+                        });
+                    }
+                }
+            }
+            
+            function decode_utf8(s) {
+  return decodeURIComponent(escape(s));
+}
+
+            function  addFile(file) {
+                document.getElementById("file").innerHTML = file;
+            }
+
+            function b64EncodeUnicode(str) {
+                return btoa(encodeURIComponent(str).replace(/%([0-9A-F]{2})/g, function (match, p1) {
+                    return String.fromCharCode('0x' + p1);
+                }));
+            }
+
+            function b64DecodeUnicode(str) {
+                return decodeURIComponent(Array.prototype.map.call(atob(str), function (c) {
+                    return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+                }).join(''));
+            }
+
+            function toHTML(data) {
+                while (data.indexOf("\n") >= 0) {
+                    data = data.replace("\n", "<br/>");
+                }
+                return data;
+            }
+var Base64={_keyStr:"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=",encode:function(e){var t="";var n,r,i,s,o,u,a;var f=0;e=Base64._utf8_encode(e);while(f<e.length){n=e.charCodeAt(f++);r=e.charCodeAt(f++);i=e.charCodeAt(f++);s=n>>2;o=(n&3)<<4|r>>4;u=(r&15)<<2|i>>6;a=i&63;if(isNaN(r)){u=a=64}else if(isNaN(i)){a=64}t=t+this._keyStr.charAt(s)+this._keyStr.charAt(o)+this._keyStr.charAt(u)+this._keyStr.charAt(a)}return t},decode:function(e){var t="";var n,r,i;var s,o,u,a;var f=0;e=e.replace(/[^A-Za-z0-9+/=]/g,"");while(f<e.length){s=this._keyStr.indexOf(e.charAt(f++));o=this._keyStr.indexOf(e.charAt(f++));u=this._keyStr.indexOf(e.charAt(f++));a=this._keyStr.indexOf(e.charAt(f++));n=s<<2|o>>4;r=(o&15)<<4|u>>2;i=(u&3)<<6|a;t=t+String.fromCharCode(n);if(u!=64){t=t+String.fromCharCode(r)}if(a!=64){t=t+String.fromCharCode(i)}}t=Base64._utf8_decode(t);return t},_utf8_encode:function(e){e=e.replace(/rn/g,"n");var t="";for(var n=0;n<e.length;n++){var r=e.charCodeAt(n);if(r<128){t+=String.fromCharCode(r)}else if(r>127&&r<2048){t+=String.fromCharCode(r>>6|192);t+=String.fromCharCode(r&63|128)}else{t+=String.fromCharCode(r>>12|224);t+=String.fromCharCode(r>>6&63|128);t+=String.fromCharCode(r&63|128)}}return t},_utf8_decode:function(e){var t="";var n=0;var r=c1=c2=0;while(n<e.length){r=e.charCodeAt(n);if(r<128){t+=String.fromCharCode(r);n++}else if(r>191&&r<224){c2=e.charCodeAt(n+1);t+=String.fromCharCode((r&31)<<6|c2&63);n+=2}else{c2=e.charCodeAt(n+1);c3=e.charCodeAt(n+2);t+=String.fromCharCode((r&15)<<12|(c2&63)<<6|c3&63);n+=3}}return t}}
+
+
+        </script>
+
+    </body>
+
+
+</html>
