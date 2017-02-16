@@ -35,20 +35,26 @@ public class ClienteDeSessao {
             while (reader.hasNextLine() && process.isAlive()) {
                 String next = getString(reader.nextLine());
 
-                if (next == null || next.isEmpty() || next.length() < 3) {
+                if (next == null || next.isEmpty()) {
                     continue;
                 }
 
                 int index = 0;
 
-                String server = next.substring(1, index = next.indexOf("]"));
+                String data = next.substring(1, index = next.indexOf("]"));
 
                 if (index == -1) {
                     continue;
                 }
 
-                next = next.substring(index + 1);
-                System.out.println("a enviar texto: " + next + " para " + server);
+                String[] split = data.split(",");
+                String server = split[0];
+                StringBuilder text = new StringBuilder(next.substring(index + 1));
+                for (int i = 1; i < split.length; i++) {
+                    text.insert(Integer.parseInt(split[i]), "\n");
+                }
+                next = text.toString();
+                System.out.println("a enviar texto: \"" + next + "\" para " + server);
 
                 List<Session> sessions = sessoes.get(server);
                 if (sessions != null && !sessions.isEmpty()) {
@@ -68,9 +74,9 @@ public class ClienteDeSessao {
 
     public String getString(String line) {
         System.err.println("recebido: " + line);
-          byte[] decode = Base64.getDecoder().decode(line);
-        String s = new String(decode, 0, decode.length);
-        return s;
+        ///byte[] decode = Base64.getDecoder().decode(line);
+        ///String s = new String(decode, 0, decode.length);
+        return line;
     }
 
     public boolean compareTo(ClienteDeSessao t) {

@@ -48,7 +48,7 @@ public class NewWSEndpoint {
 
         System.out.println("mensagem de " + token + " para " + server);
 
-        message = "[" + server + "]" + message;
+        //message = "[" + server + "]" + message;
 
         System.out.println("enviando a process: " + message);
 
@@ -57,9 +57,9 @@ public class NewWSEndpoint {
                     .getProcess(token)
                     .getOutputStream();
             outputStream.write(
-                   (Base64.getEncoder().encodeToString(message.getBytes()) + System.lineSeparator()).getBytes());
-          // message.getBytes());
-                    outputStream.flush();
+                    //         (Base64.getEncoder().encodeToString(message.getBytes()) + System.lineSeparator()).getBytes());
+                    (message + System.lineSeparator()).getBytes());
+            outputStream.flush();
         } catch (IOException ex) {
             System.err.println("erro ao enviar a processo: " + ex);
         }

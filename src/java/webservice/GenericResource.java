@@ -104,7 +104,7 @@ public class GenericResource {
         String json = null;
         try {
             Process exec = Runtime.getRuntime().exec(
-                    "java -jar /home/mfernandes/NetBeansProjects/jriprocess/store/jriprocess.jar",
+                    "java -jar /home/mfernandes/NetBeansProjects/JRIaccess/store/jriaccess.jar",
                      null, new File(diretorio));
 
             json = new Scanner(exec.getInputStream()).nextLine();
@@ -112,7 +112,7 @@ public class GenericResource {
             CollectionsSingleton.getInstance().putProcess(token, exec);
 
         } catch (IOException ex) {
-            return "{\"error\":\"" + ex + "\"}";
+            return "{\"error\":\"" + ex.toString().replace("\"", "'").replace(":", ";") + "\"}";
         }
 
         if (json == null) {
